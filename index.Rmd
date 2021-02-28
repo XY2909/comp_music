@@ -26,7 +26,6 @@ Visualisations {.storyboard}
 
 ### Building up intensity: Hans Zimmer's piece of epicness 
 
-*Note: This section is moved to front to enable screenshot, please read introduction first.*
 ```{r}
 time <-  
   get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
@@ -65,6 +64,8 @@ time %>%
 ```
 
 *** 
+*Note: This section is moved to front to enable screenshot, please read introduction first.* 
+
 This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
 
 ### Compare the overall energy using violinplot
