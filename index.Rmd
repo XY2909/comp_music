@@ -2,33 +2,80 @@
 title: "Computational Musicology"
 author: "Xing Yu Pan"
 date: "spring 2021"
-output: html_document
+output: 
+  flexdashboard::flex_dashboard:
+  storyboard: true
+  vertical_layout: scroll
+  theme: cosmo
 ---
-
-
-## *** PLEASE DO NOT SHOW THIS PORTFOLIO IN CLASS ***
-#### Overview Corpus 
-
-For this portfolio I choose to compare two of my favorite composers: Joe Hisaishi and Hans Zimmer. They are both know for their scores in the film industry with their own unique styles. I'm interested in how they differ in the way they compose and how this can be explained by the geographic region, as Joe Hisaishi mostly works with Japanese films and Hans Zimmer with his career in Hollywood. However it is not yet clear which part I will be compare to the most. 
-  
-#### Short Introduction of the composers
-
-As Joe Hisaishi is one of the most famous Japanese composer, known for over 100 film scores and the association with the animator Hayao Miyazaki, he has provide many composition which has worldwide success, including the opening theme of Miyazaki's film Spirited Away and later on the score of Howl's Moving Castle. His composingstyle can be described as gentle, minimalistic and melancholic, which also becomes a tradematk of much of the studio Ghibli's output. 
-
-Hans Zimmer is a German film score composer and producer. His work are notable for integreting electronic sounds with traditional orchestral arrangements. He has many award winning compositions include The Lion King and the Pirates of the Caribbean series. 
-
-#### Some basic comparisons 
 
 ```{r setup, include=FALSE,  warning=FALSE}
 
 library(tidyverse)
 library(spotifyr)
+library(plotly)
+library(compmus)
 ```
+
+
+
+
+Visualisations {.storyboard}
+=========================================
+
+
+### Building up intensity: Hans Zimmer's piece of epicness 
+
+*Note: This section is moved to front to enable screenshot, please read introduction first.*
+```{r}
+time <-  
+  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
+  compmus_align(bars, segments) %>%                      # Change `bars`
+  select(bars) %>%                                      #   in all three
+  unnest(bars) %>%                                      #   of these lines.
+  mutate(
+    pitches =
+      map(segments,
+        compmus_summarise, pitches,
+        method = "rms", norm = "euclidean"              # Change summary & norm.
+      )
+  ) %>%
+  mutate(
+    timbre =
+      map(segments,
+        compmus_summarise, timbre,
+        method = "rms", norm = "euclidean"              # Change summary & norm.
+      )
+  )
+
+time %>%
+  compmus_gather_timbre() %>%
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = basis,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
+  scale_fill_viridis_c() +                              
+  theme_classic()
+```
+
+*** 
+This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
+
+### Compare the overall energy using violinplot
+
+
 ```{r, echo=FALSE, warning=FALSE }
 Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
 Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
 
 ```
+
 ```{r, echo=FALSE,  warning=FALSE}
 awards <-
   bind_rows(
@@ -38,30 +85,124 @@ awards <-
 
 ```
 ```{r, echo=FALSE,  warning=FALSE}
-awards %>%
-  ggplot(aes(x = category, y = valence, fill = category)) +
-   geom_boxplot() + theme_get() + ylab("Overall energy") + 
-           xlab("Category")
+box <- awards %>%
+  ggplot(aes(x = category, y = energy, fill = category)) +
+   geom_violin() + theme(legend.position = 'none') + ylab("Overall energy")  + stat_summary(fun.y=median, geom="point", size=2, color="red")
+
+
+
+# make it interactive
+ggplotly(box)
 
 ```
 
+***
+As shown in the violinplot, both artists have a relatively low energy in terms of intensity and activity of their audio features. The graph indicates that both artists have a pretty similar energy level in terms of their work looking at the shape of the violin, this is also supported by the fact that they both have an average energy level at 0.21 (indicated by the red dot).To have a better understanding in the meaning of the feature 'energy', we introduce another feature 'valence' in the next graph. 
 
-As shown in the graph above, both artists have a relatively low energy in terms of intensity and activity of their audio features. The graph indicates that Joe Hisaishi has a larger variance in energy compared to Hans Zimmer, however the average mean of their energy level is pretty similar. To have a more understanding in the meaning of the feature 'energy', we introduce another feature 'valence'. In the graph below valence is plotted against the energy of both artists. Each point indicates an album of artist. As we can see from the scatterplot, the density is a largest in the left-under area where both energy and valence is low. Hans Zimmer's work mostly has a very low valence level(0-0.125) and a low to medium energy level(0-0.50), while Joe Hisaishi's work has a more even contribution across the left-under section. 
-  From both graph we can conclude that both artist have a pretty similar composing style where the valence and the energy is low, i.e. the soundtracks sound pretty sad according to the music theory (- valence, - energy). 
-
+### Energy vs valence: a scatterplot comparison
 
 
 ```{r, echo=FALSE,  warning=FALSE}
-p <- ggplot(awards, aes(x = valence, y = energy, color = category)) + geom_point(position = "jitter") + scale_x_continuous("valence") +  scale_color_discrete("Artist")
+p <- ggplot(awards, aes(x = valence, y = energy, color = category)) + geom_point(position = "jitter",  alpha = 0.7) + scale_x_continuous("valence") +  scale_color_discrete("Artist") 
 
-p + geom_hline(yintercept=0.50, linetype="dashed", color = "red") + geom_vline(xintercept = 0.5,  linetype="dashed", color = "red")
-
-```
-
-
-
-
+p + geom_hline(yintercept=0.50, linetype="dashed", color = "red") + geom_vline(xintercept = 0.5,  linetype="dashed", color = "red") + annotate("text", x = 0.0, y = 1, label = "Angry", size = 3.5) + annotate("text", x = 1, y = 1, label = "Happy", size = 3.5) + annotate("text", x = 1, y = 0.0, label = "Relax", size = 3.5) + annotate("text", x = 0, y = 0, label = "Sad", size = 3.5)
 
 ```
+
+***
+
+In this graph valence is plotted against the energy of both artists. Each point indicates an album of artist. As we can see from the scatterplot, the density is a largest in the left-under area where both energy and valence is low. Hans Zimmer's work mostly has a very low valence level(0-0.125) and a low to medium energy level(0-0.50), while Joe Hisaishi's work has a more even contribution across the left-under section. 
+From both graph we can conclude that both artist have a pretty similar composing style where the valence and the energy is low, i.e. the soundtracks sound pretty sad according to the music theory (- valence, - energy). 
+
+### Analysing audio using chromagram: Hans Zimmer
+```{r}
+happy_hans <-
+  get_tidy_audio_analysis("1PykJIrOF4sMsefkaF0Ttb") %>%
+  select(segments) %>%
+  unnest(segments) %>%
+  select(start, duration, pitches)
+
+#1PykJIrOF4sMsefkaF0Ttb   6rvIP7Cjx0eirVTngB2VNu
+happy_hans %>%
+  mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
+  compmus_gather_chroma() %>% 
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = pitch_class,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
+  theme_minimal() +
+  scale_fill_viridis_c()
+```
+
+*** 
+
+As mentioned before, Hans and Joe have pretty similar composing styles according to Spotify API. I'm curious to see where the difference lies when I compare two soundtracks of them where the energy level and the valence level is the same. I'll compare Hans Zimmer's soundtrack 'Toupee Or Not- Toupee' with Joe Hisaishi's soundtrack 'The Dorok Army Stikes Back' (both have an energy of 0.73 and valence of 0.97). 
+
+As shown in the chromagram, this soundtrack consist of the use of various keys, pitches with the most energy are mostly in the range of F# to A. Also pitch B is commonly used. The green block (pitch B) at the end of the timeline could be explained as the soundtrack is ended with a crash cymbal.
+
+### Analysing audio using chromagram: Joe Hisaishi
+```{r}
+happy_joe <-
+  get_tidy_audio_analysis("0bbLyGASEHwDVUm5KOccIc") %>%
+  select(segments) %>%
+  unnest(segments) %>%
+  select(start, duration, pitches)
+
+happy_joe %>%
+  mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
+  compmus_gather_chroma() %>% 
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = pitch_class,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
+  theme_minimal() +
+  scale_fill_viridis_c()
+```
+
+*** 
+Compared to the previous chromagram of Zimmer's soundtrack, Hisaishi's soundtrack has the most energy in pitch G over time. Differ from Zimmer, this soundtrack pay little attention to pitch B although it's easier to see what they do have in common than what they don't.
+
+
+  
+Introduction 
+=========================================
+
+
+### Overview Corpus 
+
+*** PLEASE DO NOT SHOW THIS PORTFOLIO IN CLASS ***
+
+For this portfolio I choose to compare two of my favorite composers: Joe Hisaishi and Hans Zimmer. They are both know for their scores in the film industry with their own unique styles. I'm interested in how they differ in the way they compose and how this can be explained by the geographic region, as Joe Hisaishi mostly works with Japanese films and Hans Zimmer with his career in Hollywood. 
+
+### Short Introduction of the composers
+
+As Joe Hisaishi is one of the most famous Japanese composer, known for over 100 film scores and the association with the animator Hayao Miyazaki, he has provide many composition which has worldwide success, including the opening theme of Miyazaki's film Spirited Away and later on the score of Howl's Moving Castle. His composingstyle can be described as gentle, minimalistic and melancholic, which also becomes a trademark of much of the studio Ghibli's output. 
+
+Hans Zimmer is a German film score composer and producer. His work are notable for integrating electronic sounds with traditional orchestral arrangements. He has many award winning compositions include The Lion King and the Pirates of the Caribbean series. 
+
+
+
+Discussion
+=========================================
+
+### About the chromagram
+
+Chromagrams is handy in the way you can align two pieces together and tell the difference, but it's pretty difficult in this case, as two composers don't have a piece where they both have worked on. So the logical next step is using chromagram to annotate key moments as you can see the energy levels of various pitches. However the compared pieces are totally different and it's hard to tell whether chromagram is a good choice here. 
+
+
+
+
 
 
