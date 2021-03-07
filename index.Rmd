@@ -23,50 +23,137 @@ library(compmus)
 Visualisations {.storyboard}
 =========================================
 
+### NEW! Estimating keys: Spotify has difficulty estimating keys in a less traditional track
 
-### Building up intensity: Hans Zimmer's piece of epicness 
 
 ```{r}
-time <-  
-  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
-  compmus_align(bars, segments) %>%                      # Change `bars`
-  select(bars) %>%                                      #   in all three
-  unnest(bars) %>%                                      #   of these lines.
+circshift <- function(v, n) {
+  if (n == 0) v else c(tail(v, n), head(v, -n))
+}
+
+#      C     C#    D     Eb    E     F     F#    G     Ab    A     Bb    B
+major_chord <-
+  c(   1,    0,    0,    0,    1,    0,    0,    1,    0,    0,    0,    0)
+minor_chord <-
+  c(   1,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0,    0)
+seventh_chord <-
+  c(   1,    0,    0,    0,    1,    0,    0,    1,    0,    0,    1,    0)
+
+major_key <-
+  c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
+minor_key <-
+  c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+
+chord_templates <-
+  tribble(
+    ~name, ~template,
+    "Gb:7", circshift(seventh_chord, 6),
+    "Gb:maj", circshift(major_chord, 6),
+    "Bb:min", circshift(minor_chord, 10),
+    "Db:maj", circshift(major_chord, 1),
+    "F:min", circshift(minor_chord, 5),
+    "Ab:7", circshift(seventh_chord, 8),
+    "Ab:maj", circshift(major_chord, 8),
+    "C:min", circshift(minor_chord, 0),
+    "Eb:7", circshift(seventh_chord, 3),
+    "Eb:maj", circshift(major_chord, 3),
+    "G:min", circshift(minor_chord, 7),
+    "Bb:7", circshift(seventh_chord, 10),
+    "Bb:maj", circshift(major_chord, 10),
+    "D:min", circshift(minor_chord, 2),
+    "F:7", circshift(seventh_chord, 5),
+    "F:maj", circshift(major_chord, 5),
+    "A:min", circshift(minor_chord, 9),
+    "C:7", circshift(seventh_chord, 0),
+    "C:maj", circshift(major_chord, 0),
+    "E:min", circshift(minor_chord, 4),
+    "G:7", circshift(seventh_chord, 7),
+    "G:maj", circshift(major_chord, 7),
+    "B:min", circshift(minor_chord, 11),
+    "D:7", circshift(seventh_chord, 2),
+    "D:maj", circshift(major_chord, 2),
+    "F#:min", circshift(minor_chord, 6),
+    "A:7", circshift(seventh_chord, 9),
+    "A:maj", circshift(major_chord, 9),
+    "C#:min", circshift(minor_chord, 1),
+    "E:7", circshift(seventh_chord, 4),
+    "E:maj", circshift(major_chord, 4),
+    "G#:min", circshift(minor_chord, 8),
+    "B:7", circshift(seventh_chord, 11),
+    "B:maj", circshift(major_chord, 11),
+    "D#:min", circshift(minor_chord, 3)
+  )
+
+key_templates <-
+  tribble(
+    ~name, ~template,
+    "Gb:maj", circshift(major_key, 6),
+    "Bb:min", circshift(minor_key, 10),
+    "Db:maj", circshift(major_key, 1),
+    "F:min", circshift(minor_key, 5),
+    "Ab:maj", circshift(major_key, 8),
+    "C:min", circshift(minor_key, 0),
+    "Eb:maj", circshift(major_key, 3),
+    "G:min", circshift(minor_key, 7),
+    "Bb:maj", circshift(major_key, 10),
+    "D:min", circshift(minor_key, 2),
+    "F:maj", circshift(major_key, 5),
+    "A:min", circshift(minor_key, 9),
+    "C:maj", circshift(major_key, 0),
+    "E:min", circshift(minor_key, 4),
+    "G:maj", circshift(major_key, 7),
+    "B:min", circshift(minor_key, 11),
+    "D:maj", circshift(major_key, 2),
+    "F#:min", circshift(minor_key, 6),
+    "A:maj", circshift(major_key, 9),
+    "C#:min", circshift(minor_key, 1),
+    "E:maj", circshift(major_key, 4),
+    "G#:min", circshift(minor_key, 8),
+    "B:maj", circshift(major_key, 11),
+    "D#:min", circshift(minor_key, 3)
+  )
+```
+
+```{r}
+time2 <-
+  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%
+  compmus_align(sections, segments) %>%
+  select(sections) %>%
+  unnest(sections ) %>%
   mutate(
     pitches =
       map(segments,
         compmus_summarise, pitches,
-        method = "rms", norm = "euclidean"              # Change summary & norm.
-      )
-  ) %>%
-  mutate(
-    timbre =
-      map(segments,
-        compmus_summarise, timbre,
-        method = "rms", norm = "euclidean"              # Change summary & norm.
+        method = "mean", norm = "manhattan"
       )
   )
-
-time %>%
-  compmus_gather_timbre() %>%
+```
+```{r}
+time2 %>% 
+  compmus_match_pitch_template(
+    key_templates,         # Change to chord_templates if descired
+    method = "manhattan",     # Try different distance metrics
+    norm = "manhattan"     # Try different norms
+  ) %>%
   ggplot(
-    aes(
-      x = start + duration / 2,
-      width = duration,
-      y = basis,
-      fill = value
-    )
+    aes(x = start + duration / 2, width = duration, y = name, fill = d)
   ) +
   geom_tile() +
-  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
-  scale_fill_viridis_c() +                              
-  theme_classic()
+  scale_fill_viridis_c(guide = "none") +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "")
+
 ```
 
 *** 
-*Note: This section is moved to front to enable screenshot, please read introduction first.* 
 
-This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
+This chordogram is based on the same track 'Time' by Hans Zimmer as it is also being analyzed using cepstrogram from previous time. I was wondering if analyzing this track using chordogram could give me more insight into the overall structure of this iconic track. 
+
+  First of all, we need to dive a bit deeper into the chordogram itself. The chordogram indicates the similarity values between the chroma vectors and the given chord templates/key template. Here key template is used and keys can be estimated by the chordogram. As indicated by the generated chordogram, it is interesting that in the first section (until approximate 25s) all the keys are marked with yellow, this also applies to the last section of the track (from approximate 280s and onward). This means there is a greater certainty to estimate keys in the beginning and the end of the track, according to the key templates. A possible explanation could be that this track is partly being synthesized (the middle part), as Hans Zimmer is known for integrating electronic music sounds with more traditional arrangements. This way Spotify API could have a difficult time estimating the key profiles when the sound is synthesized and thus not have a clear structure. 
+  
+  Generally, still some repeating patterns are found when looking at the chordogram. It can be concluded from the parts that are clearly visible, no specific keys are preferred, as all keys across the spectrum are more or less being recognized. 
+
+
 
 ### Compare the overall energy using violinplot
 
@@ -175,6 +262,50 @@ happy_joe %>%
 *** 
 Compared to the previous chromagram of Zimmer's soundtrack, Hisaishi's soundtrack has the most energy in pitch G over time. Differ from Zimmer, this soundtrack pay little attention to pitch B although it's easier to see what they do have in common than what they don't.
 
+
+
+### Building up intensity: Hans Zimmer's piece of epicness 
+
+```{r}
+time <-  
+  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
+  compmus_align(bars, segments) %>%                      # Change `bars`
+  select(bars) %>%                                      #   in all three
+  unnest(bars) %>%                                      #   of these lines.
+  mutate(
+    pitches =
+      map(segments,
+        compmus_summarise, pitches,
+        method = "rms", norm = "euclidean"              # Change summary & norm.
+      )
+  ) %>%
+  mutate(
+    timbre =
+      map(segments,
+        compmus_summarise, timbre,
+        method = "rms", norm = "euclidean"              # Change summary & norm.
+      )
+  )
+
+time %>%
+  compmus_gather_timbre() %>%
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = basis,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
+  scale_fill_viridis_c() +                              
+  theme_classic()
+```
+
+*** 
+
+This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
 
   
 Introduction 
