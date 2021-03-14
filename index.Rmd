@@ -15,6 +15,10 @@ library(tidyverse)
 library(spotifyr)
 library(plotly)
 library(compmus)
+library(grid)
+library("cowplot")
+
+theme_update(plot.title = element_text(hjust = 0.5, size = 12))
 ```
 
 
@@ -23,7 +27,233 @@ library(compmus)
 Visualisations {.storyboard}
 =========================================
 
-### NEW! Estimating keys: Spotify has difficulty estimating keys in a less traditional track
+### NEW! The track 'Time' has very irregular tempo throughout the time 
+
+```{r}
+time_a <- get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") 
+```
+```{r}
+time <-
+  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%
+  select(segments) %>%
+  unnest(segments)
+
+novelty <- time %>%
+  mutate(loudness_max_time = start + loudness_max_time) %>%
+  arrange(loudness_max_time) %>%
+  mutate(delta_loudness = loudness_max - lag(loudness_max)) %>%
+  ggplot(aes(x = loudness_max_time, y = pmax(0, delta_loudness))) +
+  geom_line() +
+  xlim(0, 300) +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "Novelty", title = "Novelty function of the track 'Time'")
+```
+
+```{r}
+tempogram <- time_a %>%
+  tempogram(window_size = 4, hop_size = 4, cyclic = FALSE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)", title = "Tempogram of the track 'Time'") +
+  theme_classic()
+```
+```{r}
+
+ggdraw() +
+  draw_plot(novelty, x = 0, y = .5, width = 1, height = .5) +
+  draw_plot(tempogram, x = 0, y = 0, width = 0.94, height = 0.5) 
+
+
+```
+
+
+*** 
+Again the track 'Time' is being estimated here, now the tempo is our main focus. For the entire track, a novelty function(above) and a tempogram(beneath) are being generated. The novelty function indicates the start of an onset which can be seen as the spikes in the graph. The irregular patterns shows that the overall tempo is pretty rough to estimate. The same was shown in the tempogram, ideally I would like to see some regular patterns within certain tempo range, but this is not the case. With some searching on Google I found out that the tempo of this track is around 60 BPM which is quite low (fun fact: this means exactly once per second, which is also how fast time past!), however this isn't clearly indicated by the graph itself. Again Spotify API has difficulty estimating low-level representations when it comes to a track that is partially being synthesized and also has integrated a great range of classical instruments. 
+
+
+### NEW! Joe and Hans are keen to rather slow tempo
+
+```{r, echo=FALSE, warning=FALSE }
+Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
+Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
+
+
+temp <-
+  bind_rows(
+    Joe %>% mutate(category = "Joe"),
+    Hans %>% mutate(category = "Hans")
+  )
+
+```
+
+```{r, echo=FALSE,  warning=FALSE}
+
+
+hist <- temp %>%
+  ggplot(aes(x = tempo, fill = category)) +
+  geom_histogram(aes(y=..density..), binwidth = 12) + facet_wrap(~category) + labs(x = 'tempo (BPM)', title = 'Density plot of tempo' ) + geom_density(alpha=.5) 
+
+# make it interactive
+ggplotly(hist)
+```
+
+*** 
+Here I made a density plot of the overall tempo used by Hans Zimmer and Joe Hisaichi based on all the track they have made so far. As it is shown by the graph, the overall shape of the distribution of these two histograms are pretty similar, both with the greatest density around 80 BPM. 
+
+### Compare the overall energy using violinplot
+
+
+```{r, echo=FALSE, warning=FALSE }
+Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
+Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
+
+```
+
+```{r, echo=FALSE,  warning=FALSE}
+awards <-
+  bind_rows(
+    Joe %>% mutate(category = "Joe"),
+    Hans %>% mutate(category = "Hans")
+  )
+
+```
+```{r, echo=FALSE,  warning=FALSE}
+box <- awards %>%
+  ggplot(aes(x = category, y = energy, fill = category)) +
+   geom_violin() + theme(legend.position = 'none') + labs(y = "Overall energy", title = "Violinplot of energy")  + stat_summary(fun.y=median, geom="point", size=2, color="red")
+
+
+
+# make it interactive
+ggplotly(box)
+
+```
+
+***
+As shown in the violinplot, both artists have a relatively low energy in terms of intensity and activity of their audio features. The graph indicates that both artists have a pretty similar energy level in terms of their work looking at the shape of the violin, this is also supported by the fact that they both have an average energy level at 0.21 (indicated by the red dot).To have a better understanding in the meaning of the feature 'energy', we introduce another feature 'valence' in the next graph. 
+
+### Energy vs valence: a scatterplot comparison
+
+
+```{r, echo=FALSE,  warning=FALSE}
+p <- ggplot(awards, aes(x = valence, y = energy, color = category)) + geom_point(position = "jitter",  alpha = 0.7) + scale_x_continuous("valence") +  scale_color_discrete("Artist") 
+
+p + geom_hline(yintercept=0.50, linetype="dashed", color = "red") + geom_vline(xintercept = 0.5,  linetype="dashed", color = "red") + annotate("text", x = 0.0, y = 1, label = "Angry", size = 3.5) + annotate("text", x = 1, y = 1, label = "Happy", size = 3.5) + annotate("text", x = 1, y = 0.0, label = "Relax", size = 3.5) + annotate("text", x = 0, y = 0, label = "Sad", size = 3.5)
+
+```
+
+***
+
+In this graph valence is plotted against the energy of both artists. Each point indicates an album of artist. As we can see from the scatterplot, the density is a largest in the left-under area where both energy and valence is low. Hans Zimmer's work mostly has a very low valence level(0-0.125) and a low to medium energy level(0-0.50), while Joe Hisaishi's work has a more even contribution across the left-under section. 
+From both graph we can conclude that both artist have a pretty similar composing style where the valence and the energy is low, i.e. the soundtracks sound pretty sad according to the music theory (- valence, - energy). 
+
+### Analysing audio using chromagram: Hans Zimmer
+```{r}
+happy_hans <-
+  get_tidy_audio_analysis("1PykJIrOF4sMsefkaF0Ttb") %>%
+  select(segments) %>%
+  unnest(segments) %>%
+  select(start, duration, pitches)
+
+#1PykJIrOF4sMsefkaF0Ttb   6rvIP7Cjx0eirVTngB2VNu
+happy_hans %>%
+  mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
+  compmus_gather_chroma() %>% 
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = pitch_class,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = "Chromagram of the track 'Toupee Or Not Toupee' by Hans Zimmer") +
+  theme_minimal() +
+  scale_fill_viridis_c()
+```
+
+*** 
+
+As mentioned before, Hans and Joe have pretty similar composing styles according to Spotify API. I'm curious to see where the difference lies when I compare two soundtracks of them where the energy level and the valence level is the same. I'll compare Hans Zimmer's soundtrack 'Toupee Or Not- Toupee' with Joe Hisaishi's soundtrack 'The Dorok Army Stikes Back' (both have an energy of 0.73 and valence of 0.97). 
+
+As shown in the chromagram, this soundtrack consist of the use of various keys, pitches with the most energy are mostly in the range of F# to A. Also pitch B is commonly used. The green block (pitch B) at the end of the timeline could be explained as the soundtrack is ended with a crash cymbal.
+
+### Analysing audio using chromagram: Joe Hisaishi
+```{r}
+happy_joe <-
+  get_tidy_audio_analysis("0bbLyGASEHwDVUm5KOccIc") %>%
+  select(segments) %>%
+  unnest(segments) %>%
+  select(start, duration, pitches)
+
+happy_joe %>%
+  mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
+  compmus_gather_chroma() %>% 
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = pitch_class,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = "Chromagram of the track 'The Dorok Army Stikes Back' by \nJoe Hisaichi") +
+  theme_minimal() +
+  scale_fill_viridis_c()
+```
+
+*** 
+Compared to the previous chromagram of Zimmer's soundtrack, Hisaishi's soundtrack has the most energy in pitch G over time. Differ from Zimmer, this soundtrack pay little attention to pitch B although it's easier to see what they do have in common than what they don't.
+
+
+
+### Building up intensity: Hans Zimmer's piece of epicness 
+
+```{r}
+time <-  
+  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
+  compmus_align(bars, segments) %>%                      # Change `bars`
+  select(bars) %>%                                      #   in all three
+  unnest(bars) %>%                                      #   of these lines.
+  mutate(
+    pitches =
+      map(segments,
+        compmus_summarise, pitches,
+        method = "rms", norm = "euclidean"              # Change summary & norm.
+      )
+  ) %>%
+  mutate(
+    timbre =
+      map(segments,
+        compmus_summarise, timbre,
+        method = "rms", norm = "euclidean"              # Change summary & norm.
+      )
+  )
+
+time %>%
+  compmus_gather_timbre() %>%
+  ggplot(
+    aes(
+      x = start + duration / 2,
+      width = duration,
+      y = basis,
+      fill = value
+    )
+  ) +
+  geom_tile() +
+  labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = "Cepstrogram of the track 'Time' by Hans Zimmer") +
+  scale_fill_viridis_c() +                              
+  theme_classic()
+```
+
+*** 
+
+This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
+
+### Estimating keys: Spotify has difficulty estimating keys in a less traditional track
 
 
 ```{r}
@@ -141,171 +371,18 @@ time2 %>%
   geom_tile() +
   scale_fill_viridis_c(guide = "none") +
   theme_minimal() +
-  labs(x = "Time (s)", y = "")
+  labs(x = "Time (s)", y = "", title = "Keygram of the track 'Time' by Hans Zimmer")
 
 ```
 
 *** 
 
-This chordogram is based on the same track 'Time' by Hans Zimmer as it is also being analyzed using cepstrogram from previous time. I was wondering if analyzing this track using chordogram could give me more insight into the overall structure of this iconic track. 
+This keygram is based on the same track 'Time' by Hans Zimmer as it is also being analyzed using cepstrogram from previous time. I was wondering if analyzing this track using keygram could give me more insight into the overall structure of this iconic track. 
 
-  First of all, we need to dive a bit deeper into the chordogram itself. The chordogram indicates the similarity values between the chroma vectors and the given chord templates/key template. Here key template is used and keys can be estimated by the chordogram. As indicated by the generated chordogram, it is interesting that in the first section (until approximate 25s) all the keys are marked with yellow, this also applies to the last section of the track (from approximate 280s and onward). This means there is a greater certainty to estimate keys in the beginning and the end of the track, according to the key templates. A possible explanation could be that this track is partly being synthesized (the middle part), as Hans Zimmer is known for integrating electronic music sounds with more traditional arrangements. This way Spotify API could have a difficult time estimating the key profiles when the sound is synthesized and thus not have a clear structure. 
+  First of all, we need to dive a bit deeper into the keygram itself. The keygram indicates the similarity values between the chroma vectors and the given chord templates/key template. Here key template is used and keys can be estimated by the keygram As indicated by the generated keygram, it is interesting that in the first section (until approximate 25s) all the keys are marked with yellow, this also applies to the last section of the track (from approximate 280s and onward). This means there is a greater certainty to estimate keys in the beginning and the end of the track, according to the key templates. A possible explanation could be that this track is partly being synthesized (the middle part), as Hans Zimmer is known for integrating electronic music sounds with more traditional arrangements. This way Spotify API could have a difficult time estimating the key profiles when the sound is synthesized and thus not have a clear structure. 
   
-  Generally, still some repeating patterns are found when looking at the chordogram. It can be concluded from the parts that are clearly visible, no specific keys are preferred, as all keys across the spectrum are more or less being recognized. 
+  Generally, still some repeating patterns are found when looking at the keygram. It can be concluded from the parts that are clearly visible, no specific keys are preferred, as all keys across the spectrum are more or less being recognized. 
 
-
-
-### Compare the overall energy using violinplot
-
-
-```{r, echo=FALSE, warning=FALSE }
-Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
-Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
-
-```
-
-```{r, echo=FALSE,  warning=FALSE}
-awards <-
-  bind_rows(
-    Joe %>% mutate(category = "Joe"),
-    Hans %>% mutate(category = "Hans")
-  )
-
-```
-```{r, echo=FALSE,  warning=FALSE}
-box <- awards %>%
-  ggplot(aes(x = category, y = energy, fill = category)) +
-   geom_violin() + theme(legend.position = 'none') + ylab("Overall energy")  + stat_summary(fun.y=median, geom="point", size=2, color="red")
-
-
-
-# make it interactive
-ggplotly(box)
-
-```
-
-***
-As shown in the violinplot, both artists have a relatively low energy in terms of intensity and activity of their audio features. The graph indicates that both artists have a pretty similar energy level in terms of their work looking at the shape of the violin, this is also supported by the fact that they both have an average energy level at 0.21 (indicated by the red dot).To have a better understanding in the meaning of the feature 'energy', we introduce another feature 'valence' in the next graph. 
-
-### Energy vs valence: a scatterplot comparison
-
-
-```{r, echo=FALSE,  warning=FALSE}
-p <- ggplot(awards, aes(x = valence, y = energy, color = category)) + geom_point(position = "jitter",  alpha = 0.7) + scale_x_continuous("valence") +  scale_color_discrete("Artist") 
-
-p + geom_hline(yintercept=0.50, linetype="dashed", color = "red") + geom_vline(xintercept = 0.5,  linetype="dashed", color = "red") + annotate("text", x = 0.0, y = 1, label = "Angry", size = 3.5) + annotate("text", x = 1, y = 1, label = "Happy", size = 3.5) + annotate("text", x = 1, y = 0.0, label = "Relax", size = 3.5) + annotate("text", x = 0, y = 0, label = "Sad", size = 3.5)
-
-```
-
-***
-
-In this graph valence is plotted against the energy of both artists. Each point indicates an album of artist. As we can see from the scatterplot, the density is a largest in the left-under area where both energy and valence is low. Hans Zimmer's work mostly has a very low valence level(0-0.125) and a low to medium energy level(0-0.50), while Joe Hisaishi's work has a more even contribution across the left-under section. 
-From both graph we can conclude that both artist have a pretty similar composing style where the valence and the energy is low, i.e. the soundtracks sound pretty sad according to the music theory (- valence, - energy). 
-
-### Analysing audio using chromagram: Hans Zimmer
-```{r}
-happy_hans <-
-  get_tidy_audio_analysis("1PykJIrOF4sMsefkaF0Ttb") %>%
-  select(segments) %>%
-  unnest(segments) %>%
-  select(start, duration, pitches)
-
-#1PykJIrOF4sMsefkaF0Ttb   6rvIP7Cjx0eirVTngB2VNu
-happy_hans %>%
-  mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
-  compmus_gather_chroma() %>% 
-  ggplot(
-    aes(
-      x = start + duration / 2,
-      width = duration,
-      y = pitch_class,
-      fill = value
-    )
-  ) +
-  geom_tile() +
-  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
-  theme_minimal() +
-  scale_fill_viridis_c()
-```
-
-*** 
-
-As mentioned before, Hans and Joe have pretty similar composing styles according to Spotify API. I'm curious to see where the difference lies when I compare two soundtracks of them where the energy level and the valence level is the same. I'll compare Hans Zimmer's soundtrack 'Toupee Or Not- Toupee' with Joe Hisaishi's soundtrack 'The Dorok Army Stikes Back' (both have an energy of 0.73 and valence of 0.97). 
-
-As shown in the chromagram, this soundtrack consist of the use of various keys, pitches with the most energy are mostly in the range of F# to A. Also pitch B is commonly used. The green block (pitch B) at the end of the timeline could be explained as the soundtrack is ended with a crash cymbal.
-
-### Analysing audio using chromagram: Joe Hisaishi
-```{r}
-happy_joe <-
-  get_tidy_audio_analysis("0bbLyGASEHwDVUm5KOccIc") %>%
-  select(segments) %>%
-  unnest(segments) %>%
-  select(start, duration, pitches)
-
-happy_joe %>%
-  mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
-  compmus_gather_chroma() %>% 
-  ggplot(
-    aes(
-      x = start + duration / 2,
-      width = duration,
-      y = pitch_class,
-      fill = value
-    )
-  ) +
-  geom_tile() +
-  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
-  theme_minimal() +
-  scale_fill_viridis_c()
-```
-
-*** 
-Compared to the previous chromagram of Zimmer's soundtrack, Hisaishi's soundtrack has the most energy in pitch G over time. Differ from Zimmer, this soundtrack pay little attention to pitch B although it's easier to see what they do have in common than what they don't.
-
-
-
-### Building up intensity: Hans Zimmer's piece of epicness 
-
-```{r}
-time <-  
-  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
-  compmus_align(bars, segments) %>%                      # Change `bars`
-  select(bars) %>%                                      #   in all three
-  unnest(bars) %>%                                      #   of these lines.
-  mutate(
-    pitches =
-      map(segments,
-        compmus_summarise, pitches,
-        method = "rms", norm = "euclidean"              # Change summary & norm.
-      )
-  ) %>%
-  mutate(
-    timbre =
-      map(segments,
-        compmus_summarise, timbre,
-        method = "rms", norm = "euclidean"              # Change summary & norm.
-      )
-  )
-
-time %>%
-  compmus_gather_timbre() %>%
-  ggplot(
-    aes(
-      x = start + duration / 2,
-      width = duration,
-      y = basis,
-      fill = value
-    )
-  ) +
-  geom_tile() +
-  labs(x = "Time (s)", y = NULL, fill = "Magnitude") +
-  scale_fill_viridis_c() +                              
-  theme_classic()
-```
-
-*** 
-
-This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
 
   
 Introduction 
