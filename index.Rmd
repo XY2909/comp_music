@@ -16,9 +16,26 @@ library(spotifyr)
 library(plotly)
 library(compmus)
 library(grid)
+library(gridExtra)
 library("cowplot")
+library(tidymodels)
+library(ggdendro)
+library(png)
+
 
 theme_update(plot.title = element_text(hjust = 0.5, size = 12))
+```
+
+```{r, results = 'hide'}
+
+get_pr <- function(fit) {
+  fit %>% 
+    conf_mat_resampled() %>% 
+    group_by(Prediction) %>% mutate(precision = Freq / sum(Freq)) %>% 
+    group_by(Truth) %>% mutate(recall = Freq / sum(Freq)) %>% 
+    ungroup() %>% filter(Prediction == Truth) %>% 
+    select(class = Prediction, precision, recall)
+}  
 ```
 
 
@@ -27,79 +44,162 @@ theme_update(plot.title = element_text(hjust = 0.5, size = 12))
 Visualisations {.storyboard}
 =========================================
 
-### NEW! The track 'Time' has very irregular tempo throughout the time 
-
-```{r}
-time_a <- get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") 
-```
-```{r}
-time <-
-  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%
-  select(segments) %>%
-  unnest(segments)
-
-novelty <- time %>%
-  mutate(loudness_max_time = start + loudness_max_time) %>%
-  arrange(loudness_max_time) %>%
-  mutate(delta_loudness = loudness_max - lag(loudness_max)) %>%
-  ggplot(aes(x = loudness_max_time, y = pmax(0, delta_loudness))) +
-  geom_line() +
-  xlim(0, 300) +
-  theme_minimal() +
-  labs(x = "Time (s)", y = "Novelty", title = "Novelty function of the track 'Time'")
-```
-
-```{r}
-tempogram <- time_a %>%
-  tempogram(window_size = 4, hop_size = 4, cyclic = FALSE) %>%
-  ggplot(aes(x = time, y = bpm, fill = power)) +
-  geom_raster() +
-  scale_fill_viridis_c(guide = "none") +
-  labs(x = "Time (s)", y = "Tempo (BPM)", title = "Tempogram of the track 'Time'") +
-  theme_classic()
-```
-```{r}
-
-ggdraw() +
-  draw_plot(novelty, x = 0, y = .5, width = 1, height = .5) +
-  draw_plot(tempogram, x = 0, y = 0, width = 0.94, height = 0.5) 
+### NEW! Decision Trees ** ps: I know the graphs are very small, I will change it later on. ** 
 
 
-```
+```{r eval=FALSE, include=FALSE}
+hans <- 
+  get_playlist_audio_features("spotify", "6qEiPFoexRdnzTokJlZf9l")
+joe <- get_playlist_audio_features("spotify", "37i9dQZF1DXapA9ZXglqsQ")
 
-
-*** 
-Again the track 'Time' is being estimated here, now the tempo is our main focus. For the entire track, a novelty function(above) and a tempogram(beneath) are being generated. The novelty function indicates the start of an onset which can be seen as the spikes in the graph. The irregular patterns shows that the overall tempo is pretty rough to estimate. The same was shown in the tempogram, ideally I would like to see some regular patterns within certain tempo range, but this is not the case. With some searching on Google I found out that the tempo of this track is around 60 BPM which is quite low (fun fact: this means exactly once per second, which is also how fast time past!), however this isn't clearly indicated by the graph itself. Again Spotify API has difficulty estimating low-level representations when it comes to a track that is partially being synthesized and also has integrated a great range of classical instruments. 
-
-
-### NEW! Joe and Hans are keen to rather slow tempo
-
-```{r, echo=FALSE, warning=FALSE }
-Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
-Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
-
-
-temp <-
+indie <-
   bind_rows(
-    Joe %>% mutate(category = "Joe"),
-    Hans %>% mutate(category = "Hans")
+    hans %>% mutate(playlist = "hans") %>% slice_head(n = 20),
+    joe %>% mutate(playlist = "joe") %>% slice_head(n = 20),
+  ) 
+```
+```{r eval=FALSE, include=FALSE}
+indie_features <-
+  indie %>%  # For your portfolio, change this to the name of your corpus.
+  add_audio_analysis() %>% 
+  mutate(
+    playlist = factor(playlist),
+    segments = map2(segments, key, compmus_c_transpose),
+    pitches =
+      map(
+        segments,
+        compmus_summarise, pitches,
+        method = "mean", norm = "manhattan"
+      ),
+    timbre =
+      map(
+        segments,
+        compmus_summarise, timbre,
+        method = "mean",
+      )
+  ) %>%
+  mutate(pitches = map(pitches, compmus_normalise, "clr")) %>%
+  mutate_at(vars(pitches, timbre), map, bind_rows) %>%
+  unnest(cols = c(pitches, timbre))
+```
+
+```{r eval=FALSE, include=FALSE}
+indie_recipe <-
+  recipe(
+    playlist ~
+      danceability +
+      energy +
+      loudness +
+      speechiness +
+      acousticness +
+      instrumentalness +
+      liveness +
+      valence +
+      tempo +
+      duration +
+      C + `C#|Db` + D + `D#|Eb` +
+      E + `F` + `F#|Gb` + G +
+      `G#|Ab` + A + `A#|Bb` + B +
+      c01 + c02 + c03 + c04 + c05 + c06 +
+      c07 + c08 + c09 + c10 + c11 + c12,
+    data = indie_features,          # Use the same name as the previous block.
+  ) %>%
+  step_center(all_predictors()) %>%
+  step_scale(all_predictors())      # Converts to z-scores.
+  # step_range(all_predictors())    # Sets range to [0, 1].
+```
+
+```{r eval=FALSE, include=FALSE}
+indie_cv <- indie_features %>% vfold_cv(5) # cross validation 
+```
+
+```{r eval=FALSE, include=FALSE}
+tree_model <-
+  decision_tree() %>%
+  set_mode("classification") %>% 
+  set_engine("C5.0")
+indie_tree <- 
+  workflow() %>% 
+  add_recipe(indie_recipe) %>% 
+  add_model(tree_model) %>% 
+  fit_resamples(
+    indie_cv, 
+    control = control_resamples(save_pred = TRUE)
   )
+```
+
+
+```{r eval=FALSE, include=FALSE}
+forest_model <- #random forest: Random forests give us the best-quality ranking of feature importance. 
+  rand_forest() %>%
+  set_mode("classification") %>% 
+  set_engine("ranger", importance = "impurity")
+indie_forest <- 
+  workflow() %>% 
+  add_recipe(indie_recipe) %>% 
+  add_model(forest_model) %>% 
+  fit_resamples(
+    indie_cv, 
+    control = control_resamples(save_pred = TRUE)
+  )
+```
+
+```{r eval=FALSE, include=FALSE}
+p1 <- indie_forest %>% get_pr()
+```
+
+```{r eval=FALSE, include=FALSE}
+workflow() %>%  # Rank features 
+  add_recipe(indie_recipe) %>% 
+  add_model(forest_model) %>% 
+  fit(indie_features) %>% 
+  pluck("fit", "fit", "fit") %>%
+  ranger::importance() %>% 
+  enframe() %>% 
+  mutate(name = fct_reorder(name, value)) %>% 
+  ggplot(aes(name, value)) + 
+  geom_col() + 
+  coord_flip() +
+  theme_minimal() +
+  labs(x = NULL, y = "Importance")
+```
+```{r eval=FALSE, include=FALSE}
+indie_features %>%
+  ggplot(aes(x = c04, y = c06, colour = playlist, size = acousticness)) +
+  geom_point(alpha = 0.8) +
+  scale_color_viridis_d() +
+  labs(
+    x = "Timbre Component 4",
+    y = "Timbre Component 6",
+    size = "acousticness",
+    colour = "Playlist"
+  )
+```
+```{r}
+comb2pngs <- function(imgs, bottom_text = NULL){
+  img1 <-  grid::rasterGrob(as.raster(readPNG(imgs[1])),
+                            interpolate = FALSE)
+  img2 <-  grid::rasterGrob(as.raster(readPNG(imgs[2])),
+                            interpolate = FALSE)
+  grid.arrange(img1, img2, ncol = 2, bottom = bottom_text)
+}
+
+png1_dest <- "precision.png"
+png2_dest <- "plot.png"
+
+comb2pngs(c(png1_dest, png2_dest))
 
 ```
 
-```{r, echo=FALSE,  warning=FALSE}
 
 
-hist <- temp %>%
-  ggplot(aes(x = tempo, fill = category)) +
-  geom_histogram(aes(y=..density..), binwidth = 12) + facet_wrap(~category) + labs(x = 'tempo (BPM)', title = 'Density plot of tempo' ) + geom_density(alpha=.5) 
+***
+Here I build a decision tree based on two playlists from both the composers. I'm interested in how well these decision tree is able to classify the track, in the sense that to whom the track belongs to. Beside this, I'm also interested in which features are the most important in the process of classification. The results are shown here. 
 
-# make it interactive
-ggplotly(hist)
-```
+First of all, I'm surprised with how well these decision tree is able to get the correct result. Although the accuracy will vary (slightly) from every run, the precision and recall are steadily around 90 percent, which is very high for a classification algorithm. 
 
-*** 
-Here I made a density plot of the overall tempo used by Hans Zimmer and Joe Hisaichi based on all the track they have made so far. As it is shown by the graph, the overall shape of the distribution of these two histograms are pretty similar, both with the greatest density around 80 BPM. 
+From the results of random forest it is clear that timbre component 4 and timbre component 6 are the most important feature here. Also the feature 'acousticness' is prominent. It seems that Joe's playlist is high on timbre component 4, as well as timbre component 6 (yellow dots in the graph), the opposite of Hans' playlist. 
+
 
 ### Compare the overall energy using violinplot
 
@@ -383,8 +483,81 @@ This keygram is based on the same track 'Time' by Hans Zimmer as it is also bein
   
   Generally, still some repeating patterns are found when looking at the keygram. It can be concluded from the parts that are clearly visible, no specific keys are preferred, as all keys across the spectrum are more or less being recognized. 
 
+### The track 'Time' has very irregular tempo throughout the time 
 
-  
+```{r}
+time_a <- get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") 
+```
+```{r}
+time <-
+  get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%
+  select(segments) %>%
+  unnest(segments)
+
+novelty <- time %>%
+  mutate(loudness_max_time = start + loudness_max_time) %>%
+  arrange(loudness_max_time) %>%
+  mutate(delta_loudness = loudness_max - lag(loudness_max)) %>%
+  ggplot(aes(x = loudness_max_time, y = pmax(0, delta_loudness))) +
+  geom_line() +
+  xlim(0, 300) +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "Novelty", title = "Novelty function of the track 'Time'")
+```
+
+```{r}
+tempogram <- time_a %>%
+  tempogram(window_size = 4, hop_size = 4, cyclic = FALSE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(guide = "none") +
+  labs(x = "Time (s)", y = "Tempo (BPM)", title = "Tempogram of the track 'Time'") +
+  theme_classic()
+```
+```{r}
+
+ggdraw() +
+  draw_plot(novelty, x = 0, y = .5, width = 1, height = .5) +
+  draw_plot(tempogram, x = 0, y = 0, width = 0.94, height = 0.5) 
+
+
+```
+
+*** 
+Again the track 'Time' is being estimated here, now the tempo is our main focus. For the entire track, a novelty function(above) and a tempogram(beneath) are being generated. The novelty function indicates the start of an onset which can be seen as the spikes in the graph. The irregular patterns shows that the overall tempo is pretty rough to estimate. The same was shown in the tempogram, ideally I would like to see some regular patterns within certain tempo range, but this is not the case. With some searching on Google I found out that the tempo of this track is around 60 BPM which is quite low (fun fact: this means exactly once per second, which is also how fast time past!), however this isn't clearly indicated by the graph itself. Again Spotify API has difficulty estimating low-level representations when it comes to a track that is partially being synthesized and also has integrated a great range of classical instruments. 
+
+
+### Joe and Hans are keen to rather slow tempo
+
+```{r, echo=FALSE, warning=FALSE }
+Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
+Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
+
+
+temp <-
+  bind_rows(
+    Joe %>% mutate(category = "Joe"),
+    Hans %>% mutate(category = "Hans")
+  )
+
+```
+
+```{r, echo=FALSE,  warning=FALSE}
+
+
+hist <- temp %>%
+  ggplot(aes(x = tempo, fill = category)) +
+  geom_histogram(aes(y=..density..), binwidth = 12) + facet_wrap(~category) + labs(x = 'tempo (BPM)', title = 'Density plot of tempo' ) + geom_density(alpha=.5) 
+
+# make it interactive
+ggplotly(hist)
+```
+
+*** 
+Here I made a density plot of the overall tempo used by Hans Zimmer and Joe Hisaichi based on all the track they have made so far. As it is shown by the graph, the overall shape of the distribution of these two histograms are pretty similar, both with the greatest density around 80 BPM. 
+
+
+
 Introduction 
 =========================================
 
