@@ -1,0 +1,33 @@
+---
+title: "HC1"
+author: "Xing Yu"
+date: "10-2-2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(spotifyr)
+library(compmus)
+
+```
+
+```{r} 
+pata_pata <-
+  get_tidy_audio_analysis("3uy90vHHATPjtdilshDQDt") %>%
+  select(segments) %>%
+  unnest(segments)
+
+```
+```{r}
+pata_pata %>%
+  mutate(loudness_max_time = start + loudness_max_time) %>%
+  arrange(loudness_max_time) %>%
+  mutate(delta_loudness = loudness_max - lag(loudness_max)) %>%
+  ggplot(aes(x = loudness_max_time, y = pmax(0, delta_loudness))) +
+  geom_line() +
+  xlim(0, 30) +
+  theme_minimal() +
+  labs(x = "Time (s)", y = "Novelty")
+```

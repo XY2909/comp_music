@@ -21,11 +21,9 @@ library("cowplot")
 library(tidymodels)
 library(ggdendro)
 library(png)
+library(knitr)
 
-
-theme_update(plot.title = element_text(hjust = 0.5, size = 12))
 ```
-
 ```{r, results = 'hide'}
 
 get_pr <- function(fit) {
@@ -39,169 +37,35 @@ get_pr <- function(fit) {
 ```
 
 
-
-
-Visualisations {.storyboard}
+Introduction 
 =========================================
 
-### NEW! Decision Trees ** ps: I know the graphs are very small, I will change it later on. ** 
+
+<font size="3"> **Overview corpus** </font> 
+
+For this portfolio I have chosen to compare two of my favorite composers: Joe Hisaishi and Hans Zimmer. They are both known for their scores in the film industry with their own unique styles. I'm interested in how they differ in the way they compose and how this can be explained by the geographic region, as Joe Hisaishi mostly works with Japanese films and Hans Zimmer with his career in Hollywood. I expect to see that the tracks composed by Joe Hisaishi would be more happier in nature compared with the overall mood from Hans' tracks, as the few tracks I known by him are all very happy and energetic, while Hans's tracks gave me more a feeling of epicness and solemn. 
+
+<font size="3"> **Strength and limitations** </font> 
+
+The way I compare these two composers is by means of the Spotify feature 'get artist audio features' where I can get all the tracks from both composers. In total there are 1976 tracks available from Hans Zimmer and 1577 tracks from Joe Hisaishi. Mostly I can analyze all available tracks in for example a scatterplot and the difference between the number of track would not be a big issue because I'm only interested in the underlying structure. However for the classification analysis (under tab Decision Tree ) I choose to train the model on the first twenty tracks from both composers ranked from popularity to speed things up. This could potentially introduce some biases as the training data is quite small here. Although I believe the trained model still can give us some insight into the features that could describe both composers. 
+
+<font size="3"> **Short introduction of the two composers** </font> 
+
+As Joe Hisaishi is one of the most famous Japanese composer, known for over 100 film scores and the association with the animator Hayao Miyazaki, he has provide many composition which has worldwide success, including the opening theme of Miyazaki's film Spirited Away and later on the score of Howl's Moving Castle. His composingstyle can be described as gentle, minimalistic and melancholic, which also becomes a trademark of much of the studio Ghibli's output. 
+
+Hans Zimmer is a German film score composer and producer. His work are notable for integrating electronic sounds with traditional orchestral arrangements. He has many award winning compositions include The Lion King and the Pirates of the Caribbean series. 
 
 
-```{r eval=FALSE, include=FALSE}
-hans <- 
-  get_playlist_audio_features("spotify", "6qEiPFoexRdnzTokJlZf9l")
-joe <- get_playlist_audio_features("spotify", "37i9dQZF1DXapA9ZXglqsQ")
+## Gallery
 
-indie <-
-  bind_rows(
-    hans %>% mutate(playlist = "hans") %>% slice_head(n = 20),
-    joe %>% mutate(playlist = "joe") %>% slice_head(n = 20),
-  ) 
-```
-```{r eval=FALSE, include=FALSE}
-indie_features <-
-  indie %>%  # For your portfolio, change this to the name of your corpus.
-  add_audio_analysis() %>% 
-  mutate(
-    playlist = factor(playlist),
-    segments = map2(segments, key, compmus_c_transpose),
-    pitches =
-      map(
-        segments,
-        compmus_summarise, pitches,
-        method = "mean", norm = "manhattan"
-      ),
-    timbre =
-      map(
-        segments,
-        compmus_summarise, timbre,
-        method = "mean",
-      )
-  ) %>%
-  mutate(pitches = map(pitches, compmus_normalise, "clr")) %>%
-  mutate_at(vars(pitches, timbre), map, bind_rows) %>%
-  unnest(cols = c(pitches, timbre))
-```
-
-```{r eval=FALSE, include=FALSE}
-indie_recipe <-
-  recipe(
-    playlist ~
-      danceability +
-      energy +
-      loudness +
-      speechiness +
-      acousticness +
-      instrumentalness +
-      liveness +
-      valence +
-      tempo +
-      duration +
-      C + `C#|Db` + D + `D#|Eb` +
-      E + `F` + `F#|Gb` + G +
-      `G#|Ab` + A + `A#|Bb` + B +
-      c01 + c02 + c03 + c04 + c05 + c06 +
-      c07 + c08 + c09 + c10 + c11 + c12,
-    data = indie_features,          # Use the same name as the previous block.
-  ) %>%
-  step_center(all_predictors()) %>%
-  step_scale(all_predictors())      # Converts to z-scores.
-  # step_range(all_predictors())    # Sets range to [0, 1].
-```
-
-```{r eval=FALSE, include=FALSE}
-indie_cv <- indie_features %>% vfold_cv(5) # cross validation 
-```
-
-```{r eval=FALSE, include=FALSE}
-tree_model <-
-  decision_tree() %>%
-  set_mode("classification") %>% 
-  set_engine("C5.0")
-indie_tree <- 
-  workflow() %>% 
-  add_recipe(indie_recipe) %>% 
-  add_model(tree_model) %>% 
-  fit_resamples(
-    indie_cv, 
-    control = control_resamples(save_pred = TRUE)
-  )
-```
-
-
-```{r eval=FALSE, include=FALSE}
-forest_model <- #random forest: Random forests give us the best-quality ranking of feature importance. 
-  rand_forest() %>%
-  set_mode("classification") %>% 
-  set_engine("ranger", importance = "impurity")
-indie_forest <- 
-  workflow() %>% 
-  add_recipe(indie_recipe) %>% 
-  add_model(forest_model) %>% 
-  fit_resamples(
-    indie_cv, 
-    control = control_resamples(save_pred = TRUE)
-  )
-```
-
-```{r eval=FALSE, include=FALSE}
-p1 <- indie_forest %>% get_pr()
-```
-
-```{r eval=FALSE, include=FALSE}
-workflow() %>%  # Rank features 
-  add_recipe(indie_recipe) %>% 
-  add_model(forest_model) %>% 
-  fit(indie_features) %>% 
-  pluck("fit", "fit", "fit") %>%
-  ranger::importance() %>% 
-  enframe() %>% 
-  mutate(name = fct_reorder(name, value)) %>% 
-  ggplot(aes(name, value)) + 
-  geom_col() + 
-  coord_flip() +
-  theme_minimal() +
-  labs(x = NULL, y = "Importance")
-```
-```{r eval=FALSE, include=FALSE}
-indie_features %>%
-  ggplot(aes(x = c04, y = c06, colour = playlist, size = acousticness)) +
-  geom_point(alpha = 0.8) +
-  scale_color_viridis_d() +
-  labs(
-    x = "Timbre Component 4",
-    y = "Timbre Component 6",
-    size = "acousticness",
-    colour = "Playlist"
-  )
-```
-```{r}
-comb2pngs <- function(imgs, bottom_text = NULL){
-  img1 <-  grid::rasterGrob(as.raster(readPNG(imgs[1])),
-                            interpolate = FALSE)
-  img2 <-  grid::rasterGrob(as.raster(readPNG(imgs[2])),
-                            interpolate = FALSE)
-  grid.arrange(img1, img2, ncol = 2, bottom = bottom_text)
-}
-
-png1_dest <- "precision.png"
-png2_dest <- "plot.png"
-
-comb2pngs(c(png1_dest, png2_dest))
-
-```
+![Left: Hans Zimmer, Right: Joe Hisaichi](combine.png){width=65%}
 
 
 
-***
-Here I build a decision tree based on two playlists from both the composers. I'm interested in how well these decision tree is able to classify the track, in the sense that to whom the track belongs to. Beside this, I'm also interested in which features are the most important in the process of classification. The results are shown here. 
+Spotify Analysis {.storyboard}
+=========================================
 
-First of all, I'm surprised with how well these decision tree is able to get the correct result. Although the accuracy will vary (slightly) from every run, the precision and recall are steadily around 90 percent, which is very high for a classification algorithm. 
-
-From the results of random forest it is clear that timbre component 4 and timbre component 6 are the most important feature here. Also the feature 'acousticness' is prominent. It seems that Joe's playlist is high on timbre component 4, as well as timbre component 6 (yellow dots in the graph), the opposite of Hans' playlist. 
-
-
-### Compare the overall energy using violinplot
+### Compare the overall energy using violinplot: Both of them have a low energy
 
 
 ```{r, echo=FALSE, warning=FALSE }
@@ -231,13 +95,13 @@ ggplotly(box)
 ```
 
 ***
-As shown in the violinplot, both artists have a relatively low energy in terms of intensity and activity of their audio features. The graph indicates that both artists have a pretty similar energy level in terms of their work looking at the shape of the violin, this is also supported by the fact that they both have an average energy level at 0.21 (indicated by the red dot).To have a better understanding in the meaning of the feature 'energy', we introduce another feature 'valence' in the next graph. 
+According to Spotify API, the feature 'energy' represents a perceptual measure of intensity and activity. As shown in the violinplot, both artists have a relatively low energy in terms of intensity and activity of their audio features. The graph indicates that both artists have a pretty **similar energy level** in terms of their work looking at the shape of the violin, this is also supported by the fact that they both have an average energy level at 0.21 (indicated by the red dot). A low energy level means that the overall track feels slow, less loud and less noisy. To have a better understanding in the meaning of the feature 'energy', we introduce another feature 'valence' in the next graph. 
 
 ### Energy vs valence: a scatterplot comparison
 
 
 ```{r, echo=FALSE,  warning=FALSE}
-p <- ggplot(awards, aes(x = valence, y = energy, color = category)) + geom_point(position = "jitter",  alpha = 0.7) + scale_x_continuous("valence") +  scale_color_discrete("Artist") 
+p <- ggplot(awards, aes(x = valence, y = energy, color = category)) + geom_point(position = "jitter",  alpha = 0.7) + scale_x_continuous("valence") +  scale_color_discrete("Artist")
 
 p + geom_hline(yintercept=0.50, linetype="dashed", color = "red") + geom_vline(xintercept = 0.5,  linetype="dashed", color = "red") + annotate("text", x = 0.0, y = 1, label = "Angry", size = 3.5) + annotate("text", x = 1, y = 1, label = "Happy", size = 3.5) + annotate("text", x = 1, y = 0.0, label = "Relax", size = 3.5) + annotate("text", x = 0, y = 0, label = "Sad", size = 3.5)
 
@@ -245,10 +109,11 @@ p + geom_hline(yintercept=0.50, linetype="dashed", color = "red") + geom_vline(x
 
 ***
 
-In this graph valence is plotted against the energy of both artists. Each point indicates an album of artist. As we can see from the scatterplot, the density is a largest in the left-under area where both energy and valence is low. Hans Zimmer's work mostly has a very low valence level(0-0.125) and a low to medium energy level(0-0.50), while Joe Hisaishi's work has a more even contribution across the left-under section. 
-From both graph we can conclude that both artist have a pretty similar composing style where the valence and the energy is low, i.e. the soundtracks sound pretty sad according to the music theory (- valence, - energy). 
+In this graph valence is plotted against the energy of both artists. Each point indicates an album of artist. As we can see from the scatterplot, the density is a largest in the left-under area where both energy and valence is low. Hans Zimmer's work mostly has a very low valence level(0-0.125) and a low to medium energy level(0-0.50), while Joe Hisaishi's work has a more even contribution across the left-under section.
+From both graph we can conclude that **both artist have a pretty similar composing style where the valence and the energy is low**, i.e. the soundtracks sound pretty sad according to the music theory (- valence, - energy). 
 
 ### Analysing audio using chromagram: Hans Zimmer
+
 ```{r}
 happy_hans <-
   get_tidy_audio_analysis("1PykJIrOF4sMsefkaF0Ttb") %>%
@@ -256,10 +121,9 @@ happy_hans <-
   unnest(segments) %>%
   select(start, duration, pitches)
 
-#1PykJIrOF4sMsefkaF0Ttb   6rvIP7Cjx0eirVTngB2VNu
 happy_hans %>%
   mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
-  compmus_gather_chroma() %>% 
+  compmus_gather_chroma() %>%
   ggplot(
     aes(
       x = start + duration / 2,
@@ -274,13 +138,14 @@ happy_hans %>%
   scale_fill_viridis_c()
 ```
 
-*** 
+***
 
-As mentioned before, Hans and Joe have pretty similar composing styles according to Spotify API. I'm curious to see where the difference lies when I compare two soundtracks of them where the energy level and the valence level is the same. I'll compare Hans Zimmer's soundtrack 'Toupee Or Not- Toupee' with Joe Hisaishi's soundtrack 'The Dorok Army Stikes Back' (both have an energy of 0.73 and valence of 0.97). 
+As mentioned before, Hans and Joe have pretty similar composing styles according to Spotify API. I'm curious to see where the difference lies when I compare two soundtracks of them where the energy level and the valence level is the same. I'll compare Hans Zimmer's soundtrack 'Toupee Or Not- Toupee' with Joe Hisaishi's soundtrack 'The Dorok Army Stikes Back' (both have an energy of 0.73 and valence of 0.97).
 
 As shown in the chromagram, this soundtrack consist of the use of various keys, pitches with the most energy are mostly in the range of F# to A. Also pitch B is commonly used. The green block (pitch B) at the end of the timeline could be explained as the soundtrack is ended with a crash cymbal.
 
 ### Analysing audio using chromagram: Joe Hisaishi
+
 ```{r}
 happy_joe <-
   get_tidy_audio_analysis("0bbLyGASEHwDVUm5KOccIc") %>%
@@ -290,7 +155,7 @@ happy_joe <-
 
 happy_joe %>%
   mutate(pitches = map(pitches, compmus_normalise, "euclidean")) %>%
-  compmus_gather_chroma() %>% 
+  compmus_gather_chroma() %>%
   ggplot(
     aes(
       x = start + duration / 2,
@@ -305,15 +170,14 @@ happy_joe %>%
   scale_fill_viridis_c()
 ```
 
-*** 
-Compared to the previous chromagram of Zimmer's soundtrack, Hisaishi's soundtrack has the most energy in pitch G over time. Differ from Zimmer, this soundtrack pay little attention to pitch B although it's easier to see what they do have in common than what they don't.
+***
+Compared to the previous chromagram of Zimmer's soundtrack, Hisaishi's soundtrack has the most energy in pitch G over time. Differ from Zimmer, this soundtrack pays little attention to pitch B although it's easier to see what they do have in common than what they don't.
 
 
-
-### Building up intensity: Hans Zimmer's piece of epicness 
+### Building up intensity: Hans Zimmer's piece of epicness
 
 ```{r}
-time <-  
+time <-
   get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") %>%     # Change URI.
   compmus_align(bars, segments) %>%                      # Change `bars`
   select(bars) %>%                                      #   in all three
@@ -345,13 +209,13 @@ time %>%
   ) +
   geom_tile() +
   labs(x = "Time (s)", y = NULL, fill = "Magnitude", title = "Cepstrogram of the track 'Time' by Hans Zimmer") +
-  scale_fill_viridis_c() +                              
+  scale_fill_viridis_c() +
   theme_classic()
 ```
 
-*** 
+***
 
-This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which c01 is the Spotify timbre component explaining the loudness, c02 the amount of energy in the lower frequency and c03 the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the loudness builds up, the intensity of the track also builds up, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02).  
+This cepstrogram is based on Hans Zimmer's soundtrack 'Time' which he provide for the ending sequence of the film 'Inception'. The structure of this track can be seen in the cepstrogram in which **c01** is the Spotify timbre component explaining the loudness, **c02** the amount of energy in the lower frequency and **c03** the amount of energy in the midrange frequency of a given timeframe. It is clear that the loudness of the first half (up to approx. 120 sec) is slowing building up, with instruments playing like piano, cello and tuba, providing energy in the low and midrange frequencies. As the **loudness builds up, the intensity of the track also builds up**, then from 120 sec to approximately 220 sec the climax is reached, which is also the part with intertwining melodies that we are all so familiar to. In this part layers of instruments take part, mimicking the narrative of the film where the emotion of the protagonist reached the top as he thinks about his wife back in limbo. This could also explain the energy in more abstract layers in the cepstrogram (from c04 and up) as more instruments intertwining with each other. Afterwards the loudness drops as a sign of fade out while instruments with low frequencies still plays (as seen in the last part of c02). 
 
 ### Estimating keys: Spotify has difficulty estimating keys in a less traditional track
 
@@ -459,7 +323,7 @@ time2 <-
   )
 ```
 ```{r}
-time2 %>% 
+time2 %>%
   compmus_match_pitch_template(
     key_templates,         # Change to chord_templates if descired
     method = "manhattan",     # Try different distance metrics
@@ -475,18 +339,18 @@ time2 %>%
 
 ```
 
-*** 
+***
 
-This keygram is based on the same track 'Time' by Hans Zimmer as it is also being analyzed using cepstrogram from previous time. I was wondering if analyzing this track using keygram could give me more insight into the overall structure of this iconic track. 
+This keygram is based on the same track 'Time' by Hans Zimmer as it is also being analyzed using cepstrogram from previous time. I was wondering if analyzing this track using keygram could give me more insight into the overall structure of this iconic track.
 
-  First of all, we need to dive a bit deeper into the keygram itself. The keygram indicates the similarity values between the chroma vectors and the given chord templates/key template. Here key template is used and keys can be estimated by the keygram As indicated by the generated keygram, it is interesting that in the first section (until approximate 25s) all the keys are marked with yellow, this also applies to the last section of the track (from approximate 280s and onward). This means there is a greater certainty to estimate keys in the beginning and the end of the track, according to the key templates. A possible explanation could be that this track is partly being synthesized (the middle part), as Hans Zimmer is known for integrating electronic music sounds with more traditional arrangements. This way Spotify API could have a difficult time estimating the key profiles when the sound is synthesized and thus not have a clear structure. 
-  
-  Generally, still some repeating patterns are found when looking at the keygram. It can be concluded from the parts that are clearly visible, no specific keys are preferred, as all keys across the spectrum are more or less being recognized. 
+First of all, we need to dive a bit deeper into the keygram itself. The keygram indicates the similarity values between the chroma vectors and the given chord templates/key template. Here key template is used and keys can be estimated by the keygram. As indicated by the generated keygram, it is interesting that in the first section (until approximate 25s) all the keys are marked with yellow, this also applies to the last section of the track (from approximate 280s and onward). This means **there is a greater certainty to estimate keys in the beginning and the end of the track**, according to the key templates. A possible explanation could be that this track is partly being synthesized (the middle part), as Hans Zimmer is known for integrating electronic music sounds with more traditional arrangements. This way Spotify API could have a difficult time estimating the key profiles when the sound is synthesized and thus not have a clear structure.
 
-### The track 'Time' has very irregular tempo throughout the time 
+Generally, still some repeating patterns are found when looking at the keygram. It can be concluded from the parts that are clearly visible, **no specific keys are preferred according to Spotify**, as all keys across the spectrum are more or less being recognized. This confirms the intuition that Spotify is not able to recognize the key in this track, as it is known that this famous track is in the **key of G**. 
+
+### The track 'Time' has very irregular tempo throughout the time
 
 ```{r}
-time_a <- get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb") 
+time_a <- get_tidy_audio_analysis("5TXY9UWJMiMopFTpW0uUBb")
 ```
 ```{r}
 time <-
@@ -518,71 +382,245 @@ tempogram <- time_a %>%
 
 ggdraw() +
   draw_plot(novelty, x = 0, y = .5, width = 1, height = .5) +
-  draw_plot(tempogram, x = 0, y = 0, width = 0.94, height = 0.5) 
+  draw_plot(tempogram, x = 0, y = 0, width = 0.94, height = 0.5)
 
 
 ```
 
-*** 
-Again the track 'Time' is being estimated here, now the tempo is our main focus. For the entire track, a novelty function(above) and a tempogram(beneath) are being generated. The novelty function indicates the start of an onset which can be seen as the spikes in the graph. The irregular patterns shows that the overall tempo is pretty rough to estimate. The same was shown in the tempogram, ideally I would like to see some regular patterns within certain tempo range, but this is not the case. With some searching on Google I found out that the tempo of this track is around 60 BPM which is quite low (fun fact: this means exactly once per second, which is also how fast time past!), however this isn't clearly indicated by the graph itself. Again Spotify API has difficulty estimating low-level representations when it comes to a track that is partially being synthesized and also has integrated a great range of classical instruments. 
+***
+Again the track 'Time' is being estimated here, now the tempo is our main focus. For the entire track, a novelty function(above) and a tempogram(beneath) are being generated. The novelty function indicates the start of an onset which can be seen as the spikes in the graph. The irregular patterns shows that **the overall tempo is pretty rough to estimate**. The same was shown in the tempogram, ideally I would like to see some regular patterns within certain tempo range, but this is not the case. With some searching on Google I found out that the tempo of this track is around 60 BPM which is quite low (fun fact: this means exactly once per second, which is also how fast time past!), however this isn't clearly indicated by the graph itself. **Again Spotify API has difficulty estimating low-level representations** when it comes to a track that is partially being synthesized and also has integrated a great range of classical instruments.
 
 
-### Joe and Hans are keen to rather slow tempo
+### The popular tracks are very diverse when looking at tempo
 
-```{r, echo=FALSE, warning=FALSE }
-Joe <- get_artist_audio_features("7nzSoJISlVJsn7O0yTeMOB")
-Hans <- get_artist_audio_features("0YC192cP3KPCRWx8zr8MfZ")
+```{r}
+joee <-
+  get_playlist_audio_features(
+    "thesoundsofspotify",
+    "37i9dQZF1DXapA9ZXglqsQ"
+  ) %>%
+  slice(1:25) %>%
+  add_audio_analysis()
+hanss <-
+  get_playlist_audio_features(
+    "thesoundsofspotify",
+    "6qEiPFoexRdnzTokJlZf9l"
+  ) %>%
+  slice(1:25) %>%
+  add_audio_analysis()
+```
+```{r}
+jazz <-
+  joee %>%
+  mutate(artist = "Joe Hisaishi") %>%
+  bind_rows(hanss %>% mutate(artist = "Hans Zimmer"))
 
-
-temp <-
-  bind_rows(
-    Joe %>% mutate(category = "Joe"),
-    Hans %>% mutate(category = "Hans")
+jazz %>%
+  mutate(
+    sections =
+      map(
+        sections,                                    # sections or segments
+        summarise_at,
+        vars(tempo, loudness, duration),             # features of interest
+        list(section_mean = mean, section_sd = sd)   # aggregation functions
+      )
+  ) %>%
+  unnest(sections) %>%
+  ggplot(
+    aes(
+      x = tempo,
+      y = tempo_section_sd,
+      colour = artist,
+      alpha = loudness
+    )
+  ) +
+  geom_point(aes(size = duration / 60)) +
+  geom_rug() +
+  theme_minimal() +
+  ylim(0, 5) +
+  labs(
+    x = "Mean Tempo (bpm)",
+    y = "SD Tempo",
+    colour = "Artist",
+    size = "Duration (min)",
+    alpha = "Volume (dBFS)"
   )
-
 ```
 
-```{r, echo=FALSE,  warning=FALSE}
+
+***
+Here I compare the tempo of the most popular 25 tracks from both composers. Here the mean tempo is plotted against the standard deviation of tempo, with size indicating the duration and opacity indicating the volume. 
+
+At the first glance it seems that the majority of the track have a mean tempo around 75-90 BPM. Overall there is a **quite large difference between the individual tracks as well as between the two groups of tracks**. It can be concluded that when we look at the most popular tracks, they do not follow a standard pattern in the sense of the tempo variation as well as duration and the volume used. This is interesting because the two composers are able to perform different styles of tracks and these tracks are also appreciated by the audience. 
 
 
-hist <- temp %>%
-  ggplot(aes(x = tempo, fill = category)) +
-  geom_histogram(aes(y=..density..), binwidth = 12) + facet_wrap(~category) + labs(x = 'tempo (BPM)', title = 'Density plot of tempo' ) + geom_density(alpha=.5) 
-
-# make it interactive
-ggplotly(hist)
-```
-
-*** 
-Here I made a density plot of the overall tempo used by Hans Zimmer and Joe Hisaichi based on all the track they have made so far. As it is shown by the graph, the overall shape of the distribution of these two histograms are pretty similar, both with the greatest density around 80 BPM. 
+### Decision Tree: What makes a track typical for a composer? 
 
 
+<!-- # ```{r} -->
+<!-- # hans <- -->
+<!-- #   get_playlist_audio_features("spotify", "6qEiPFoexRdnzTokJlZf9l") -->
+<!-- # joe <- get_playlist_audio_features("spotify", "37i9dQZF1DXapA9ZXglqsQ") -->
+<!-- #  -->
+<!-- # indie <- -->
+<!-- #   bind_rows( -->
+<!-- #     hans %>% mutate(playlist = "hans") %>% slice_head(n = 20), -->
+<!-- #     joe %>% mutate(playlist = "joe") %>% slice_head(n = 20), -->
+<!-- #   ) -->
+<!-- # ``` -->
+<!-- # ```{r} -->
+<!-- # indie_features <- -->
+<!-- #   indie %>%  # For your portfolio, change this to the name of your corpus. -->
+<!-- #   add_audio_analysis() %>% -->
+<!-- #   mutate( -->
+<!-- #     playlist = factor(playlist), -->
+<!-- #     segments = map2(segments, key, compmus_c_transpose), -->
+<!-- #     pitches = -->
+<!-- #       map( -->
+<!-- #         segments, -->
+<!-- #         compmus_summarise, pitches, -->
+<!-- #         method = "mean", norm = "manhattan" -->
+<!-- #       ), -->
+<!-- #     timbre = -->
+<!-- #       map( -->
+<!-- #         segments, -->
+<!-- #         compmus_summarise, timbre, -->
+<!-- #         method = "mean", -->
+<!-- #       ) -->
+<!-- #   ) %>% -->
+<!-- #   mutate(pitches = map(pitches, compmus_normalise, "clr")) %>% -->
+<!-- #   mutate_at(vars(pitches, timbre), map, bind_rows) %>% -->
+<!-- #   unnest(cols = c(pitches, timbre)) -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # indie_recipe <- -->
+<!-- #   recipe( -->
+<!-- #     playlist ~ -->
+<!-- #       danceability + -->
+<!-- #       energy + -->
+<!-- #       loudness + -->
+<!-- #       speechiness + -->
+<!-- #       acousticness + -->
+<!-- #       instrumentalness + -->
+<!-- #       liveness + -->
+<!-- #       valence + -->
+<!-- #       tempo + -->
+<!-- #       duration + -->
+<!-- #       C + `C#|Db` + D + `D#|Eb` + -->
+<!-- #       E + `F` + `F#|Gb` + G + -->
+<!-- #       `G#|Ab` + A + `A#|Bb` + B + -->
+<!-- #       c01 + c02 + c03 + c04 + c05 + c06 + -->
+<!-- #       c07 + c08 + c09 + c10 + c11 + c12, -->
+<!-- #     data = indie_features,          # Use the same name as the previous block. -->
+<!-- #   ) %>% -->
+<!-- #   step_center(all_predictors()) %>% -->
+<!-- #   step_scale(all_predictors())      # Converts to z-scores. -->
+<!-- #   # step_range(all_predictors())    # Sets range to [0, 1]. -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # indie_cv <- indie_features %>% vfold_cv(5) # cross validation -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # tree_model <- -->
+<!-- #   decision_tree() %>% -->
+<!-- #   set_mode("classification") %>% -->
+<!-- #   set_engine("C5.0") -->
+<!-- # indie_tree <- -->
+<!-- #   workflow() %>% -->
+<!-- #   add_recipe(indie_recipe) %>% -->
+<!-- #   add_model(tree_model) %>% -->
+<!-- #   fit_resamples( -->
+<!-- #     indie_cv, -->
+<!-- #     control = control_resamples(save_pred = TRUE) -->
+<!-- #   ) -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # forest_model <- #random forest: Random forests give us the best-quality ranking of feature importance. -->
+<!-- #   rand_forest() %>% -->
+<!-- #   set_mode("classification") %>% -->
+<!-- #   set_engine("ranger", importance = "impurity") -->
+<!-- # indie_forest <- -->
+<!-- #   workflow() %>% -->
+<!-- #   add_recipe(indie_recipe) %>% -->
+<!-- #   add_model(forest_model) %>% -->
+<!-- #   fit_resamples( -->
+<!-- #     indie_cv, -->
+<!-- #     control = control_resamples(save_pred = TRUE) -->
+<!-- #   ) -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # p1 <- indie_forest %>% get_pr() -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # workflow() %>%  # Rank features -->
+<!-- #   add_recipe(indie_recipe) %>% -->
+<!-- #   add_model(forest_model) %>% -->
+<!-- #   fit(indie_features) %>% -->
+<!-- #   pluck("fit", "fit", "fit") %>% -->
+<!-- #   ranger::importance() %>% -->
+<!-- #   enframe() %>% -->
+<!-- #   mutate(name = fct_reorder(name, value)) %>% -->
+<!-- #   ggplot(aes(name, value)) + -->
+<!-- #   geom_col() + -->
+<!-- #   coord_flip() + -->
+<!-- #   theme_minimal() + -->
+<!-- #   labs(x = NULL, y = "Importance") -->
+<!-- # ``` -->
+<!-- # ```{r} -->
+<!-- # indie_features %>% -->
+<!-- #   ggplot(aes(x = c04, y = c06, colour = playlist, size = acousticness)) + -->
+<!-- #   geom_point(alpha = 0.8) + -->
+<!-- #   scale_color_viridis_d() + -->
+<!-- #   labs( -->
+<!-- #     x = "Timbre Component 4", -->
+<!-- #     y = "Timbre Component 6", -->
+<!-- #     size = "acousticness", -->
+<!-- #     colour = "Playlist" -->
+<!-- #   ) -->
+<!-- # ``` -->
+<!-- # ```{r eval=FALSE, include=FALSE} -->
+<!-- # comb2pngs <- function(imgs, bottom_text = NULL){ -->
+<!-- #   img1 <-  grid::rasterGrob(as.raster(readPNG(imgs[1])), -->
+<!-- #                             interpolate = FALSE) -->
+<!-- #   img2 <-  grid::rasterGrob(as.raster(readPNG(imgs[2])), -->
+<!-- #                             interpolate = FALSE) -->
+<!-- #   grid.arrange(img1, img2, ncol = 2, bottom = bottom_text) -->
+<!-- # } -->
 
-Introduction 
+<!-- png1_dest <- "precision.png" -->
+<!-- png2_dest <- "plot.png" -->
+
+<!-- comb2pngs(c(png1_dest, png2_dest)) -->
+
+<!-- ``` -->
+![](ppp.png){width=50%}
+
+***
+
+Here I build a decision tree based on two playlists from both the composers. I'm interested in how well these decision tree is able to classify the track, in the sense that to whom the track belongs to. Beside this, I'm also interested in which features are the most important in the process of classification. The results are shown here.
+
+First of all, I'm surprised with how well these decision tree is able to get the correct result. Although the accuracy will vary (slightly) from every run, the precision and recall are steadily around **90** percent, which is very high for a classification algorithm.
+
+From the results of random forest it is clear that **timbre component 4 and timbre component 6 are the most important feature here to distinguish whether a tracks belongs to Joe or Hans**. Also the feature 'acousticness' is prominent. It seems that Joe's playlist is high on timbre component 4, as well as timbre component 6 (yellow dots in the graph), the opposite of Hans' playlist. This is interesting as these two timbre component are more abstract and hard to explain than the lower timbre components. It's hard to tell if we can rely on these components as the algorithm do, because we don't have meaningful explanations for these components.
+
+
+Final Thoughts
 =========================================
 
+<font size="3"> **Thoughts about the whole proces** </font> 
 
-### Overview Corpus 
+When I first started the course and heard that we must come up with our own corpus, I was immediately drawn to the idea of comparing my two favorite composers Hans Zimmer and Joe Hisaishi. However I have no clue how this comparison will be executed during the course, especially by means of Spotify API. Now by the end of the process, I look back with a lot of proud and joy. I have learned a lot about data visualization and extracting meaningful Spotify features of my interest. 
 
-*** PLEASE DO NOT SHOW THIS PORTFOLIO IN CLASS ***
+<font size="3"> **What have I learned from my corpus** </font> 
 
-For this portfolio I choose to compare two of my favorite composers: Joe Hisaishi and Hans Zimmer. They are both know for their scores in the film industry with their own unique styles. I'm interested in how they differ in the way they compose and how this can be explained by the geographic region, as Joe Hisaishi mostly works with Japanese films and Hans Zimmer with his career in Hollywood. 
-
-### Short Introduction of the composers
-
-As Joe Hisaishi is one of the most famous Japanese composer, known for over 100 film scores and the association with the animator Hayao Miyazaki, he has provide many composition which has worldwide success, including the opening theme of Miyazaki's film Spirited Away and later on the score of Howl's Moving Castle. His composingstyle can be described as gentle, minimalistic and melancholic, which also becomes a trademark of much of the studio Ghibli's output. 
-
-Hans Zimmer is a German film score composer and producer. His work are notable for integrating electronic sounds with traditional orchestral arrangements. He has many award winning compositions include The Lion King and the Pirates of the Caribbean series. 
-
-
-
-Discussion
-=========================================
-
-### About the chromagram
-
-Chromagrams is handy in the way you can align two pieces together and tell the difference, but it's pretty difficult in this case, as two composers don't have a piece where they both have worked on. So the logical next step is using chromagram to annotate key moments as you can see the energy levels of various pitches. However the compared pieces are totally different and it's hard to tell whether chromagram is a good choice here. 
-
+As mentioned in the introduction, I was expecting to see that the tracks by Joe Hisaishi would be more happier in nature compared to tracks by Hans Zimmer according to my own experiences. However Spotify API tells me that they have pretty similar styles (low energy, low tempo and a bit sad). I was also able to analyze the iconic track 'Time' by it's timbre- and chroma features. The results I got was diverse, sometimes Spotify yields meaningful feature visualizations (like cepstrogram) and sometimes it does not (like by tempo estimation). Although it could also be that I overlooked some errors in code. Finally I'm surprised by the positive result of the classification algorithm. Apparently the algorithm sees a significant difference between the tracks by Hans and the tracks by Joe when you look at timbre components 4 and 6. This is an interesting finding in comparison to the conclusions we drawn before, where Hans and Joe have much in common. 
 
 
 
